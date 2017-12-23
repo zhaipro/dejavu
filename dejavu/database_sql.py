@@ -219,6 +219,14 @@ class SQLDatabase(Database):
             for row in cur:
                 yield row
 
+    def has_song(self, hash):
+        with self.cursor() as cur:
+            sql = 'SELECT %s FROM %s where %s=%%s limit 1;' % (Database.FIELD_SONG_ID,
+                                                               self.FINGERPRINTS_TABLENAME,
+                                                               Database.FIELD_HASH)
+            cur.execute(sql, (hash,))
+            return cur.fetchone() is not None
+
     def get_song_by_id(self, sid):
         """
         Returns song by its ID.
