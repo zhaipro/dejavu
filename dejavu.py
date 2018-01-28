@@ -5,26 +5,26 @@ import sys
 import json
 import warnings
 import argparse
+from argparse import RawTextHelpFormatter
 
 from dejavu import Dejavu
 from dejavu.recognize import FileRecognizer
 from dejavu.recognize import MicrophoneRecognizer
-from argparse import RawTextHelpFormatter
 
-warnings.filterwarnings("ignore")
+warnings.filterwarnings('ignore')
 
-DEFAULT_CONFIG_FILE = "dejavu.cnf.SAMPLE"
+DEFAULT_CONFIG_FILE = 'dejavu.cnf.SAMPLE'
 
 
 def init(configpath):
-    """ 
+    '''
     Load config from a JSON file
-    """
+    '''
     try:
         with open(configpath) as f:
             config = json.load(f)
     except IOError as err:
-        print("Cannot open configuration: %s. Exiting" % (str(err)))
+        print('Cannot open configuration: %s. Exiting' % (str(err)))
         sys.exit(1)
 
     # create a Dejavu instance
@@ -33,7 +33,7 @@ def init(configpath):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description="Dejavu: Audio Fingerprinting library",
+        description='Dejavu: Audio Fingerprinting library',
         formatter_class=RawTextHelpFormatter)
     parser.add_argument('-c', '--config', nargs='?',
                         help='Path to configuration file\n'
@@ -59,7 +59,7 @@ if __name__ == '__main__':
     config_file = args.config
     if config_file is None:
         config_file = DEFAULT_CONFIG_FILE
-        # print "Using default config file: %s" % (config_file)
+        # print 'Using default config file: %s' % (config_file)
 
     djv = init(config_file)
     if args.fingerprint:
@@ -67,9 +67,9 @@ if __name__ == '__main__':
         if len(args.fingerprint) == 2:
             directory = args.fingerprint[0]
             extension = args.fingerprint[1]
-            print("Fingerprinting all .%s files in the %s directory"
+            print('Fingerprinting all .%s files in the %s directory'
                   % (extension, directory))
-            djv.fingerprint_directory(directory, ["." + extension], 4)
+            djv.fingerprint_directory(directory, ['.' + extension], 4)
 
         elif len(args.fingerprint) == 1:
             filepath = args.fingerprint[0]

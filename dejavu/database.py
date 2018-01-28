@@ -1,176 +1,78 @@
+# coding: utf-8
 from __future__ import absolute_import
-import abc
+from itertools import izip_longest
+
+import peewee
+from playhouse.sqlite_ext import SqliteExtDatabase
+
+from .utils import settings
+
+db = SqliteExtDatabase(settings.DBNAME)
 
 
-class Database(object):
-    __metaclass__ = abc.ABCMeta
+class Music(peewee.Model):
+    name = peewee.CharField(256)
+    fingerprinted = peewee.BooleanField(default=False)
+    sha1 = peewee.BlobField()
 
-    FIELD_FILE_SHA1 = 'file_sha1'
-    FIELD_SONG_ID = 'song_id'
-    FIELD_SONGNAME = 'song_name'
-    FIELD_OFFSET = 'offset'
-    FIELD_HASH = 'hash'
+    class Meta:
+        database = db
 
-    # Name of your Database subclass, this is used in configuration
-    # to refer to your class
-    type = None
+    @classmethod
+    def count(cls):
+        return cls.filter(fingerprinted=True).count()
 
-    def __init__(self):
-        super(Database, self).__init__()
+    @classmethod
+    def exists(cls, **kws):
+        return cls.filter(**kws).exists()
 
-    def before_fork(self):
-        """
-        Called before the database instance is given to the new process
-        """
-        pass
-
-    def after_fork(self):
-        """
-        Called after the database instance has been given to the new process
-
-        This will be called in the new process.
-        """
-        pass
-
-    def setup(self):
-        """
-        Called on creation or shortly afterwards.
-        """
-        pass
-
-    @abc.abstractmethod
-    def empty(self):
-        """
-        Called when the database should be cleared of all data.
-        """
-        pass
-
-    @abc.abstractmethod
-    def delete_unfingerprinted_songs(self):
-        """
-        Called to remove any song entries that do not have any fingerprints
-        associated with them.
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_num_songs(self):
-        """
-        Returns the amount of songs in the database.
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_num_fingerprints(self):
-        """
-        Returns the number of fingerprints in the database.
-        """
-        pass
-
-    @abc.abstractmethod
-    def set_song_fingerprinted(self, sid):
-        """
-        Sets a specific song as having all fingerprints in the database.
-
-        sid: Song identifier
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_songs(self):
-        """
-        Returns all fully fingerprinted songs in the database.
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_song_by_id(self, sid):
-        """
-        Return a song by its identifier
-
-        sid: Song identifier
-        """
-        pass
-
-    @abc.abstractmethod
-    def insert(self, hash, sid, offset):
-        """
-        Inserts a single fingerprint into the database.
-
-          hash: Part of a sha1 hash, in hexadecimal format
-           sid: Song identifier this fingerprint is off
-        offset: The offset this hash is from
-        """
-        pass
-
-    @abc.abstractmethod
-    def insert_song(self, song_name):
-        """
-        Inserts a song name into the database, returns the new
-        identifier of the song.
-
-        song_name: The name of the song.
-        """
-        pass
-
-    @abc.abstractmethod
-    def query(self, hash):
-        """
-        Returns all matching fingerprint entries associated with
-        the given hash as parameter.
-
-        hash: Part of a sha1 hash, in hexadecimal format
-        """
-        pass
-
-    @abc.abstractmethod
-    def get_iterable_kv_pairs(self):
-        """
-        Returns all fingerprints in the database.
-        """
-        pass
-
-    @abc.abstractmethod
-    def insert_hashes(self, sid, hashes):
-        """
-        Insert a multitude of fingerprints.
-
-           sid: Song identifier the fingerprints belong to
-        hashes: A sequence of tuples in the format (hash, offset)
-        -   hash: Part of a sha1 hash, in hexadecimal format
-        - offset: Offset this hash was created from/at.
-        """
-        pass
-
-    @abc.abstractmethod
-    def return_matches(self, hashes):
-        """
-        Searches the database for pairs of (hash, offset) values.
-
-        hashes: A sequence of tuples in the format (hash, offset)
-        -   hash: Part of a sha1 hash, in hexadecimal format
-        - offset: Offset this hash was created from/at.
-
-        Returns a sequence of (sid, offset_difference) tuples.
-
-                      sid: Song identifier
-        offset_difference: (offset - database_offset)
-        """
-        pass
+    def finish(self):
+        self.fingerprinted = True
+        self.save()
 
 
-def get_database(database_type=None):
-    # Default to using the mysql database
-    database_type = database_type or "mysql"
-    # Lower all the input.
-    database_type = database_type.lower()
+class Fingerprint(peewee.Model):
+    hash = peewee.BlobField(index=True)
+    music = peewee.ForeignKeyField(Music)
+    offset = peewee.IntegerField()
 
-    for db_cls in Database.__subclasses__():
-        if db_cls.type == database_type:
-            return db_cls
+    class Meta:
+        database = db
+        # 联合唯一
+        indexes = [(('hash', 'music', 'offset'), True)]
 
-    raise TypeError("Unsupported database type supplied.")
+    @classmethod
+    def count(cls):
+        return cls.select().count()
 
 
-# Import our default database handler
-import dejavu.database_sql
+db.connect()
+# https://github.com/coleifer/peewee/issues/211
+Music.create_table(fail_silently=True)
+Fingerprint.create_table(fail_silently=True)
+Music.delete().filter(fingerprinted=False).execute()
+
+
+def grouper(iterable, n, fillvalue=None):
+    args = [iter(iterable)] * n
+    return (filter(None, values) for values
+            in izip_longest(fillvalue=fillvalue, *args))
+
+
+def insert_hashes(music, hashes):
+    for hashes in grouper(hashes, 100):
+        data = ({'hash': h, 'music': music, 'offset': offset} for h, offset in hashes)
+        Fingerprint.insert_many(data).on_conflict(action='IGNORE').execute()
+
+
+def return_matches(hashes):
+    """
+    Return the (song_id, offset_diff) tuples associated with
+    a list of (sha1, sample_offset) values.
+    """
+    # Create a dictionary of hash => offset pairs for later lookups
+    mapper = dict(hashes)
+
+    for hashes in grouper(mapper.keys(), 100):
+        for f in Fingerprint.filter(hash__in=hashes):
+            yield f.music_id, f.offset - mapper[str(f.hash)]

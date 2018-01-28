@@ -61,7 +61,7 @@ try:
 except:
     os.mkdir(options.results_folder)
 
-# set logging 
+# set logging
 if options.log:
     logging.basicConfig(filename=options.log_file, level=logging.DEBUG)
 
@@ -70,11 +70,11 @@ test_seconds = ['%dsec' % i for i in range(1, options.secs + 1, 1)]
 
 # generate testing files
 for i in range(1, options.secs + 1, 1):
-    generate_test_files(test_folder, options.temp_folder, 
+    generate_test_files(test_folder, options.temp_folder,
                         i, padding=options.padding)
 
 # scan files
-log_msg("Running Dejavu fingerprinter on files in %s..." % test_folder, 
+log_msg("Running Dejavu fingerprinter on files in %s..." % test_folder,
         log=options.log, silent=options.silent)
 
 tm = time.time()
@@ -83,7 +83,7 @@ log_msg("finished obtaining results from dejavu in %s" % (time.time() - tm),
         log=options.log, silent=options.silent)
 
 tests = 1  # djv
-n_secs = len(test_seconds) 
+n_secs = len(test_seconds)
 
 # set result variables -> 4d variables
 all_match_counter = [[[0 for x in xrange(tests)] for x in xrange(3)] for x in xrange(n_secs)]
